@@ -1,1 +1,1 @@
-([:dependencies ([org.clojure/clojure "1.5.1"] [prismatic/plumbing "0.2.1"])])
+([:dependencies ([org.clojure/clojure "1.5.1"] [prismatic/plumbing "0.2.1"] [org.clojure/tools.nrepl "0.2.1" :exclusions ([org.clojure/clojure])] [clojure-complete/clojure-complete "0.2.2" :exclusions ([org.clojure/clojure])])])
