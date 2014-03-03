@@ -7,6 +7,15 @@
    [schema.core :as s])
   (:import [java.net URLDecoder]))
 
+(defmacro spy [x & [context]]
+  `(let [context# ~context
+         x# ~x
+         file# ~*ns*
+         line# ~(:line (meta &form))]
+     (println "SPY" (str file# ":" line# " " context#))
+     (clojure.pprint/pprint x#)
+     x#))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Local Definitions
 
@@ -23,12 +32,20 @@
     all handlers are at leaf nodes"
   ::handler)
 
-(s/defn split-path :- [s/Keyword]
-  [path :- String]
+(s/defschema MatchResult
+  [(s/either
+    s/Keyword
+    (s/named [s/Keyword] "multiple-wildcard match"))])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Private
+
+(s/defn split-path :- [s/Str]
+  [path :- s/Str]
   (->> (.split path "/")
        (keep (fn [^String segment]
                (when-not (.isEmpty segment)
-                 (keyword segment))))))
+                 segment)))))
 
 (defn all-splits [x]
   (map #(split-at % x) (range 1 (count x))))
@@ -37,19 +54,23 @@
   "Recursively looks up the specified path starting at the given node.
    If there is a handler located at the specified path,
     returns the handler and the matching path segments, grouping the multiple segments
-    that match a multiple-wildcard into a seq.
+    that match a multiple-wildcard into a single seq.
+    Multiple-wildcards are greedy: if there is ambiguity,
+     earlier wildcards capture more than the ones that follow them.
 
    At each level, the lookup prioritizes literal matches over single-wildcards,
-    and single-wildcards over multiple-wildcards. If a given prefix fails,
-    the search will backtrack to try all valid alternate routes."
+    and single-wildcards over multiple-wildcards.
+    The search will backtrack to try all possible matching routes.
+    Returns nil if no match is found."
   ([node path] (prefix-lookup node [] (conj path +handler-key+)))
   ([node
-    result :- [(s/either s/Keyword [s/Keyword])]
+    result :- MatchResult
     path :- [s/Keyword]]
      (let [[x & xs] path]
        (if (= x +handler-key+)
          (when-let [handler (get node +handler-key+)]
-           {:match-result result :handler handler})
+           {:match-result result
+            :handler handler})
          (or
           (prefix-lookup (get node x) (conj result x) xs)
           (prefix-lookup (get node +single-wildcard+) (conj result x) xs)
@@ -74,15 +95,26 @@
 (defn uri-arg-map [split]
   (->> split
        (keep-indexed
-        (fn [[i segment]]
+        (fn [i segment]
           (when-let [arg (uri-arg segment)]
             [i arg])))
        (into {})))
 
+(defn realize-uri-args [uri-arg-map match-result]
+  (for-map [[idx uri-arg] uri-arg-map]
+    uri-arg (get match-result idx)))
+
+(defnk request->path-seq [uri request-method :as request]
+  (->> (str/upper-case (name request-method))
+       (format "%s/%s" uri)
+       split-path
+       (map keyword)
+       vec))
+
 (s/defn compile-handler [handler]
-  (let [split (split-path (.replaceAll (fnhouse/path handler) "$" "/"))]
+  (let [split (-> handler fnhouse/path (.replaceAll "\\$" "/") split-path)]
     {:handler handler
-     :match-path (conj (map match-segment split) +handler-key+)
+     :match-path (-> (map match-segment split) vec (conj +handler-key+))
      :uri-arg-map (uri-arg-map split)}))
 
 (defn build-prefix-map [handlers]
@@ -90,21 +122,19 @@
        (map (comp (juxt :match-path identity) compile-handler))
        map/unflatten))
 
-(defnk request->path-seq [uri request-method :as request]
-  (->> (str/upper-case (name request-method))
-       (format "%s/%s" uri)
-       split-path))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Public
 
-(defn realize-uri-args [match-result uri-arg-map]
-  (for-map [[idx uri-arg] uri-arg-map]
-    uri-arg (get match-result idx)))
-
-(defn root-handler [handlers]
+(defn root-handler
+  "Takes a seq of handlers, returns a single handler that routes the request, and processes
+    uri arguments to the appropriate input handler based on the path."
+  [handlers]
   (let [prefix-map (build-prefix-map handlers)]
     (fn [request]
       (if-let [found (->> request request->path-seq (prefix-lookup prefix-map))]
         (letk [[match-result [:handler handler uri-arg-map]] found]
-          (->> (realize-uri-args match-result uri-arg-map)
+          (->> match-result
+               (realize-uri-args uri-arg-map)
                (assoc request :uri-args)
                handler))
         {:status 404 :body "Not found."}))))
