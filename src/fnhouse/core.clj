@@ -15,17 +15,23 @@
 (s/defschema KeywordMap
   {s/Keyword s/Any})
 
-(s/defschema Request
-  (for-map [field [:uri-args :query-params :body]]
-    (s/optional-key field) KeywordMap))
+(s/defschema RingRequest
+  (map-keys
+   s/optional-key
+   {:uri-args KeywordMap
+    :query-params KeywordMap
+    :body s/Any}))
+
+(s/defschema RingResponse
+  s/Any)
 
 (s/defschema Handler
-  (s/=> s/Any Request))
+  (s/=> RingResponse RingRequest))
 
 (s/defschema Symbol
   (s/pred symbol? 'symbol?))
 
-(s/defschema Variable
+(s/defschema Var
   (s/pred var? 'var?))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -50,7 +56,7 @@
 ;; Public
 
 (s/defn path [handler :- Handler]
-  (get handler :path
+  (get (meta handler) :path
        (->> [:route-prefix :name]
             (map #(handler-property handler %))
             (apply str))))
@@ -79,21 +85,24 @@
 (s/defn responses [handler :- Handler]
   (pfnk/output-schema handler))
 
-(s/defn compile-routes :- (s/=> (s/named KeywordMap "resources") [Handler])
+(s/defn compile-handler :- Handler
+  "Partially apply the the handler to the resources and return a fnk from request to response"
+  [resources handler]
+  (propagate-meta
+   (pfnk/fn->fnk
+    (fn [request] (handler {:request request :resources resources}))
+    [(:request (pfnk/input-schema handler) {})
+     (pfnk/output-schema handler)])
+   handler))
+
+(s/defn compile-routes :- (s/=> [Handler] (s/named KeywordMap "resources"))
   "Take a seq of handlers and produce a single fnk from resources to seq of handlers.
    Each handler in the returned seq is a fnk from request to response.
    Conceptually, this function returns a curried version of the handlers
-    that partially applies the handlers first to the resources and then to the request."
+    that partially applies each handler to the resources."
   [handlers]
   (pfnk/fn->fnk
-   (fn [resources]
-     (for [handler handlers]
-       (propagate-meta
-        (pfnk/fn->fnk
-         (fn [request] (handler {:request request :resources resources}))
-         [(:request (pfnk/input-schema handler) {})
-          (pfnk/output-schema handler)])
-        handler)))
+   (fn [resources] (map #(compile-handler resources %) handlers))
    [(->> handlers
          (map (comp :resources pfnk/input-schema))
          (reduce schema/union-input-schemata {}))
@@ -106,7 +115,7 @@
 (s/defn var->route-spec
   "If the input variable refers to a function that starts with a $,
     return the function annotated with the metadata of the variable."
-  [var :- Variable]
+  [var :- Var]
   (let [method-name (-> var meta (safe-get :name) name)]
     (when (and (.startsWith method-name "$") (fn? @var))
       (propagate-meta @var var))))
@@ -121,11 +130,10 @@
      (->> (ns-interns ns-sym)
           vals
           (keep var->route-spec)
-          (map #(vary-meta % assoc-when :route-prefix
-                           (when (seq route-prefix)
-                             (str "$" route-prefix)))))))
+          (?>> (seq route-prefix)
+               map #(vary-meta % assoc :route-prefix (str "$" route-prefix))))))
 
-(s/defn nss->handlers-fn :- (s/=> (s/named KeywordMap "resources") [Handler])
+(s/defn nss->handlers-fn :- (s/=> [Handler] (s/named KeywordMap "resources"))
   "Take a map from prefix to namespace symbol,
    return a fnk from resources to a seq of fnk handlers,
     each of which takes a request and produces a response."

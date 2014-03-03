@@ -1,5 +1,5 @@
-(ns fnhouse.route-test
-  (:use clojure.test plumbing.core fnhouse.route)
+(ns fnhouse.routes-test
+  (:use clojure.test plumbing.core fnhouse.routes)
   (:require
    [fnhouse.core :as fnhouse]
    [schema.core :as s]))
@@ -131,7 +131,7 @@
 
 
 (deftest root-handler-test
-  (let [svc-fn (fnhouse/nss->handlers-fn {"test" 'fnhouse.route-test})
+  (let [svc-fn (fnhouse/nss->handlers-fn {"test" 'fnhouse.routes-test})
         handlers (svc-fn {})
         h (root-handler handlers)]
 

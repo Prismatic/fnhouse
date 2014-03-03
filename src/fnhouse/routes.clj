@@ -1,4 +1,4 @@
-(ns fnhouse.route
+(ns fnhouse.routes
   (:use plumbing.core)
   (:require
    [plumbing.map :as map]
@@ -33,10 +33,7 @@
 
 (s/defn split-path :- [s/Str]
   [path :- s/Str]
-  (->> (.split path "/")
-       (keep (fn [^String segment]
-               (when-not (.isEmpty segment)
-                 segment)))))
+  (keep not-empty (.split path "/")))
 
 (defn all-splits [x]
   (map #(split-at % x) (range 1 (count x))))
@@ -54,9 +51,7 @@
     The search will backtrack to try all possible matching routes.
     Returns nil if no match is found."
   ([node path] (prefix-lookup node [] (conj path +handler-key+)))
-  ([node
-    result :- MatchResult
-    path :- [s/Keyword]]
+  ([node result :- MatchResult path :- [s/Keyword]]
      (let [[x & xs] path]
        (if (= x +handler-key+)
          (when-let [handler (get node +handler-key+)]
@@ -96,11 +91,10 @@
     uri-arg (get match-result idx)))
 
 (defnk request->path-seq [uri request-method :as request]
-  (->> (str/upper-case (name request-method))
-       (format "%s/%s" uri)
-       split-path
-       (map keyword)
-       vec))
+  (-> (vec (split-path uri))
+      (conj (str/upper-case (name request-method)))
+      (->> (map keyword))
+      vec))
 
 (s/defn compile-handler [handler]
   (let [split (-> handler fnhouse/path (.replaceAll "\\$" "/") split-path)]
