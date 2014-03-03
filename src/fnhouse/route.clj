@@ -7,15 +7,6 @@
    [schema.core :as s])
   (:import [java.net URLDecoder]))
 
-(defmacro spy [x & [context]]
-  `(let [context# ~context
-         x# ~x
-         file# ~*ns*
-         line# ~(:line (meta &form))]
-     (println "SPY" (str file# ":" line# " " context#))
-     (clojure.pprint/pprint x#)
-     x#))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Local Definitions
 
