@@ -1,79 +1,89 @@
 (ns fnhouse.core
+  "Utilities and helpers for converting namespaces of functions into handlers."
   (:use plumbing.core)
   (:require
    [schema.core :as s]
    [plumbing.graph :as graph]
    [clojure.string :as str]
-   [clojure.pprint :as pprint]
    [plumbing.fnk.pfnk :as pfnk]
    [plumbing.fnk.schema :as schema]
    [plumbing.map :as map]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Accessor Helpers
+;; Schema
 
-(defn- handler-input [handler-var input]
-  (safe-get-in (pfnk/input-schema @handler-var) [:request input]))
+(s/defschema KeywordMap
+  {s/Keyword s/Any})
 
-(defn- handler-property [handler-var property]
-  (safe-get (meta handler-var) property))
+(s/defschema Request
+  (for-map [field [:uri-args :query-params :body]]
+    (s/optional-key field) KeywordMap))
 
-#_(defn path [handler-var]
-    (-> (handler-property handler-var :name)
-        (str/split #"\$")
-        (map #(if (.startsWith)) (Char-))
-        ))
+(s/defschema Handler
+  (s/=> s/Any Request))
 
-(defn uri-args [handler-var]
-  (handler-input handler-var :uri-args))
+(s/defschema Symbol
+  (s/pred symbol? 'symbol?))
 
-(defn query-params [handler-var]
-  (handler-input handler-var :query-params))
+(s/defschema Variable
+  (s/pred var? 'var?))
 
-(defn body [handler-var]
-  (handler-input handler-var :body))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Private
 
-(defn private? [handler-var]
-  (boolean (get (meta handler-var) :private)))
+(defn propagate-meta
+  "Copy the meta from one object into another without overwriting any existing fields."
+  [to from]
+  (vary-meta
+   to
+   (fn [to-meta from-meta] (merge from-meta to-meta))
+   (meta from)))
 
-(defn description [handler-var]
-  (handler-property handler-var :doc))
+(defn- handler-input [handler input]
+  (safe-get (pfnk/input-schema handler) input))
 
-(defn short-description [handler-var]
-  (-> (handler-property handler-var :doc)
+(defn- handler-property [handler property]
+  (safe-get (meta handler) property))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Public
+
+(s/defn path [handler :- Handler]
+  (get handler :path
+       (->> [:route-prefix :name]
+            (map #(handler-property handler %))
+            (apply str))))
+
+(s/defn uri-args [handler :- Handler]
+  (handler-input handler :uri-args))
+
+(s/defn query-params [handler :- Handler]
+  (handler-input handler :query-params))
+
+(s/defn body [handler :- Handler]
+  (handler-input handler :body))
+
+(s/defn private? [handler :- Handler]
+  (boolean (get (meta handler) :private)))
+
+(s/defn description [handler :- Handler]
+  (handler-property handler :doc))
+
+(s/defn short-description [handler :- Handler]
+  (-> handler
+      description
       (str/split #"\n" 2)
       first))
 
-(defn responses [handler-var]
-  (pfnk/output-schema @handler-var))
+(s/defn responses [handler :- Handler]
+  (pfnk/output-schema handler))
 
-
-(defmacro spy [x & [context]]
-  `(let [context# ~context
-         x# ~x
-         file# ~*ns*
-         line# ~(:line (meta &form))]
-     (println "SPY" (str file# ":" line# " " context#))
-     (pprint/pprint x#)
-     x#))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;; route-map-graphlike --> route-map-builder
-
-(defn propagate-meta [to from]
-  ;; TODO: can we avoid this?
-  (vary-meta to
-             (fn [fnk-meta handler-meta]
-               ;; I want the fnks meta to win out over the handler's meta
-               (merge handler-meta fnk-meta))
-             (meta from)))
-
-
-;; A curried version of the handler that takes the resources and then the request
-(defn compile-routes
-  "Take a map of handler->fnk, and produce a single fnk that produces an isomorphic map
-   of the results of these fnks.  Unlike a graph, the fnks cannot depend on one-anothers outputs,
-   and for now we're cutting corners on limiting keys, assuming fns aren't using :s or &."
+(s/defn compile-routes :- (s/=> (s/named KeywordMap "resources") [Handler])
+  "Take a seq of handlers and produce a single fnk from resources to seq of handlers.
+   Each handler in the returned seq is a fnk from request to response.
+   Conceptually, this function returns a curried version of the handlers
+    that partially applies the handlers first to the resources and then to the request."
   [handlers]
   (pfnk/fn->fnk
    (fn [resources]
@@ -87,46 +97,40 @@
    [(->> handlers
          (map (comp :resources pfnk/input-schema))
          (reduce schema/union-input-schemata {}))
-    [s/Any]]))
+    [Handler]]))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;; namespace->route-map-graphlike
-
-
-;; TO make it swankable
+;; TODO use this to make handlers swankable
 (defn var->route-fn [var]
   (fn [request] (@var request)))
 
 (s/defn var->route-spec
-  "Take a var as input.  If the var points at a fnk and has :methods in the metadata,
-   produce a [path-string route-maker] pair where route-maker is a fnk that takes any
-   resources and returns a route fn.  The original var will be swankable, so long as new
-   resource arguments are not added.
-
-   The path is computed taking :path string in metadata or replacing $ in the var name with /.
-   If the metadata has :middleware (also a fnk), the returning builder applies the metadata
-   produced by the middleware fn the the route fn."
-  [var :- (s/pred var? 'var?)]
-  ;; TODO: allow path override
-  (let [method-name (name (safe-get (meta var) :name))]
+  "If the input variable refers to a function that starts with a $,
+    return the function annotated with the metadata of the variable."
+  [var :- Variable]
+  (let [method-name (-> var meta (safe-get :name) name)]
     (when (and (.startsWith method-name "$") (fn? @var))
-      @var)))
+      (propagate-meta @var var))))
 
-;; TODO: leading or trailing slashes in prefix?!
-(defn ns->route-graph
-  "Take a ns, and produce a nested map of fnks that build requests as described in var-route-spec."
-  ([ns-sym] (ns->route-graph ns-sym ""))
-  ([ns-sym route-prefix]
+(s/defn ns->handler-fns
+  "Take a namespace and optional prefix, return a seq of all the functions that
+    can be converted to handlers in the namespace annotated with metadata."
+  ([ns-sym :- Symbol] (ns->handler-fns ns-sym ""))
+  ([ns-sym :- Symbol route-prefix :- String]
+     (assert (not (.startsWith route-prefix "$")))
+     (assert (not (.endsWith route-prefix "$")))
      (->> (ns-interns ns-sym)
           vals
           (keep var->route-spec)
-          (map #(vary-meta % assoc :route-prefix route-prefix)))))
+          (map #(vary-meta % assoc-when :route-prefix
+                           (when (seq route-prefix)
+                             (str "$" route-prefix)))))))
 
-(defn nss->handlers-fn [ns-syms-and-prefixes] ;; map?
-  (->> ns-syms-and-prefixes
-       (mapcat (fn [[prefix namespace]] (ns->route-graph namespace prefix)))
+(s/defn nss->handlers-fn :- (s/=> (s/named KeywordMap "resources") [Handler])
+  "Take a map from prefix to namespace symbol,
+   return a fnk from resources to a seq of fnk handlers,
+    each of which takes a request and produces a response."
+  [prefix->ns-sym :- {(s/named s/Str "route prefix")
+                      (s/named Symbol "namespace")}]
+  (->> prefix->ns-sym
+       (mapcat (fn [[prefix ns-sym]] (ns->handler-fns ns-sym prefix)))
        compile-routes))
-
-#_(nss->handlers-fn
-   {"news" 'api.v2.news})
