@@ -1,66 +1,11 @@
-checkouts/
-.lein-failures
-.DS_STORE
-java-deps/
+target/**
+.lein**
+.repl/
+out/
 *~
-.repl/**
-crane_deploy.clj
-crane-deploy.clj
-out/**
-dump.rdb
-classes/
-scratch/**
-.lein-deps-sum
-build
-target
-/doc
-
-scratch.clj
-# use glob syntax.
-syntax: glob
-creds.clj
-Manifest.txt
 pom.xml
-*.ser
-*.class
-*.jar
-*~
-*.bak
-*.off
-*.old
-.DS_Store
-*.classpath
-*.project
-*.settings
-*.pyc
-store-core-test-dir/
-client/ios/DerivedData/
-.lein-failures
-.lein-repl-history
+*.asc
+target
+lib
+classes
 checkouts
-native/
-
-# xcode
-# Exclude the build directory
-build/*
-
-# Exclude temp nibs and swap files
-*~.nib
-*.swp
-
-# Exclude OS X folder attributes
-.DS_Store
-
-# Exclude user-specific XCode 3 and 4 files
-*.mode1
-*.mode1v3
-*.mode2v3
-*.perspective
-*.perspectivev3
-*.pbxuser
-*.xcworkspace
-xcuserdata
-repl-port
-.repl-port
-.idea
-*.iml
