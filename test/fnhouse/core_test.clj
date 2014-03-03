@@ -1,8 +1,7 @@
 (ns fnhouse.core-test
   (:use clojure.test plumbing.core fnhouse.core)
   (:require
-   [schema.core :as s]
-   [plumbing.fnk.pfnk :as pfnk]))
+   [schema.core :as s]))
 
 (defnk $test$handler$:uri-arg :- {:success? Boolean}
   "This is my test handler.
