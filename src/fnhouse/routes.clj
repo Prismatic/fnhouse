@@ -10,6 +10,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Local Definitions
 
+(defmacro spy [x & [context]]
+  `(let [context# ~context
+         x# ~x
+         file# ~*ns*
+         line# ~(:line (meta &form))]
+     (println "SPY" (str file# ":" line# " " context#))
+     (clojure.pprint/pprint x#)
+     x#))
+
 (def +single-wildcard+
   "Matches a single route segment"
   ::*)
@@ -35,9 +44,6 @@
   [path :- s/Str]
   (keep not-empty (.split path "/")))
 
-(defn all-splits [x]
-  (map #(split-at % x) (range 1 (count x))))
-
 (s/defn prefix-lookup
   "Recursively looks up the specified path starting at the given node.
    If there is a handler located at the specified path,
@@ -58,14 +64,15 @@
            {:match-result result
             :handler handler})
          (or
-          (prefix-lookup (get node x) (conj result x) xs)
-          (prefix-lookup (get node +single-wildcard+) (conj result x) xs)
+          (first
+           (keep
+            (fn [lookup-key]
+              (when-let [subtree (get node lookup-key)]
+                (prefix-lookup subtree (conj result x) xs)))
+            [x +single-wildcard+]))
           (when-let [rec (get node +multiple-wildcard+)]
-            (->> (all-splits path)
-                 (keep (fn [[match tail]]
-                         (prefix-lookup rec (conj result match) tail)))
-                 first)))))))
-
+            (let [[match remainder] (split-with #(not= % +handler-key+) path)]
+              (prefix-lookup rec (conj result match) remainder))))))))
 
 (s/defn uri-arg [s :- String]
   (when (.startsWith s ":")
