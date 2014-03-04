@@ -80,45 +80,46 @@
    :code code
    :body body})
 
-#_(s/defschema HandlerInfo
-    (s/both
-     {:path String
-      :method (s/enum :get :head :post :put :delete)
+(s/defschema HandlerInfo
+  (s/both
+   {:path String
+    :method (s/enum :get :head :post :put :delete)
 
-      :short-description s/Str
-      :description s/Str
+    :short-description s/Str
+    :description s/Str
 
-      :uri-args {s/Keyword (s/protocol s/Schema)}
-      :body (s/maybe s/Schema)
-      :query-params {s/Keyword (s/protocol s/Schema)
-                     (s/optional-key s/Keyword) Schema} ;; good luck
-
-
-      ;; maybe include a per-response doc format
-      :responses Responses
-
-      :source-map (s/maybe
-                   {:line s/Int
-                    :file s/Str
-                    :ns s/Str
-                    :name s/Str})
-
-      :annotations s/Any
-      ;; (private, auth level, etc etc ?? ? ??) (maybe just save a key in the meta?)
-      ;; or maybe inject a fn for extracting to nss->route-spec
+    :uri-args {s/Keyword (s/protocol s/Schema)}
+    :body (s/maybe s/Schema)
+    :query-params {s/Keyword (s/protocol s/Schema)
+                   (s/optional-key s/Keyword) Schema} ;; good luck
 
 
-      ;; Would you guys want this stuff? we can provide it!
-      ;; :resources ??? ;; schema map, useful?
-      ;; :file/line/var/ns ;; github link
-      ;; :full-request-schema???? ;; probably not useful  (stuff other than params).
-      ;; :full-response-schema???? ;; also probably not useful (stuff other than response body)
-      }
-     (s/pred
-      (fnk [method body]
-        (= (boolean (#{:post :put} method))
-           (boolean body)))
-      'only-post-has-body?)))
+    ;; maybe include a per-response doc format
+    :responses String ;;TODO: Responses
+
+    :source-map (s/maybe
+                 {:line s/Int
+                  :column s/Int
+                  :file s/Str
+                  :ns s/Str
+                  :name s/Str})
+
+    :annotations s/Any
+    ;; (private, auth level, etc etc ?? ? ??) (maybe just save a key in the meta?)
+    ;; or maybe inject a fn for extracting to nss->route-spec
+
+
+    ;; Would you guys want this stuff? we can provide it!
+    ;; :resources ??? ;; schema map, useful?
+    ;; :file/line/var/ns ;; github link
+    ;; :full-request-schema???? ;; probably not useful  (stuff other than params).
+    ;; :full-response-schema???? ;; also probably not useful (stuff other than response body)
+    }
+   (s/pred
+    (fnk [method body]
+      (= (boolean (#{:post :put} method))
+         (boolean body)))
+    'only-post-has-body?)))
 
 (s/defn path [handler :- Handler]
   (get (meta handler) :path
@@ -173,6 +174,7 @@
          (reduce schema/union-input-schemata {}))
     [Handler]]))
 
+
 (s/defn var->route-spec
   "If the input variable refers to a function that starts with a $,
     return the function annotated with the metadata of the variable."
@@ -182,6 +184,19 @@
       (propagate-meta
        (propagate-meta (fn redefable [m] (@var m)) @var)
        var))))
+
+(s/defn var->spec [var :- Var & [annotation-fn]]
+  (let [method-name (-> var meta (safe-get :name) name)]
+    (when (and (.startsWith method-name "$") (fn? @var))
+      (let [spec nil
+
+
+
+            handler
+            (propagate-meta
+             (propagate-meta (fn redefable [m] (@var m)) @var)
+             var)]))))
+
 
 (s/defn ns->handler-fns
   "Take a namespace and optional prefix, return a seq of all the functions that
