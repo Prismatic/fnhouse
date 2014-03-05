@@ -36,10 +36,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
-(s/defn split-path :- [s/Str]
-  [path :- s/Str]
-  (keep not-empty (.split path "/")))
-
 (s/defn prefix-lookup
   "Recursively looks up the specified path starting at the given node.
    If there is a handler located at the specified path,
@@ -93,7 +89,7 @@
     uri-arg (get match-result idx)))
 
 (defnk request->path-seq [uri request-method :as request]
-  (-> (vec (split-path uri))
+  (-> (vec (handlers/split-path uri))
       (conj request-method)
       vec))
 

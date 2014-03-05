@@ -73,7 +73,7 @@
 
 (s/defn split-path :- [s/Str]
   [path :- String]
-  (keep not-empty (.split path "\\$")))
+  (keep not-empty (str/split path #"/")))
 
 (s/defn uri-arg :- (s/maybe s/Keyword)
   [s :- String]
@@ -118,7 +118,7 @@
          [{doc ""} {path route}] (meta var)
          [{resources {}} {request {}}] (pfnk/input-schema @var)
          [{uri-args {}} {body nil} {query-params {}}] request]
-    (let [full-path (str route-prefix path)
+    (let [full-path (str/replace (str route-prefix path) "$" "/")
           declared-args (declared-uri-args full-path)
           source-map (select-keys (meta var) [:line :column :file :ns :name])]
       (validate-uri-args source-map uri-args declared-args)

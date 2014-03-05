@@ -5,9 +5,6 @@
    [fnhouse.handlers :as handlers]
    [schema.core :as s]))
 
-(deftest split-path-test
-  (is (= ["a" "b" "c"] (split-path "/a/b//c//"))))
-
 (deftest prefix-lookup-test
   (let [leaf (fn [x] {:get x})
         result (fn [match-result value]
