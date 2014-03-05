@@ -10,6 +10,8 @@
    [plumbing.map :as map])
   (:import [clojure.lang Namespace]))
 
+(set! *warn-on-reflection* true)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Schemas
 
@@ -70,7 +72,7 @@
 
 
 (s/defn split-path :- [s/Str]
-  [path :- s/Str]
+  [path :- String]
   (keep not-empty (.split path "\\$")))
 
 (s/defn uri-arg :- (s/maybe s/Keyword)
@@ -83,7 +85,7 @@
   [full-path :- s/Str]
   (->> full-path split-path (keep uri-arg) set))
 
-(s/defn parse-method-name [method-name :- s/Str]
+(s/defn parse-method-name [method-name :- String]
   (let [last-idx (.lastIndexOf method-name "$")]
     {:route (-> method-name (subs 0 last-idx))
      :method (-> method-name (subs (inc last-idx)) str/lower-case keyword)}))
@@ -187,3 +189,5 @@
   (->> prefix->ns-sym
        (mapcat (fn [[prefix ns-sym]] (ns->handler-fns prefix ns-sym extra-info-fn)))
        curry-handlers))
+
+(set! *warn-on-reflection* false)
