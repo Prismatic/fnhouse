@@ -3,6 +3,7 @@
   (:require
    [plumbing.map :as map]
    [fnhouse.core :as fnhouse]
+   [fnhouse.handlers :as handlers]
    [clojure.string :as str]
    [schema.core :as s])
   (:import [java.net URLDecoder]))
@@ -27,11 +28,6 @@
   "Matches one or more route segments"
   ::**)
 
-(def +handler-key+
-  "Used to ensure disjoint-prefix property of route map:
-    all handlers are at leaf nodes"
-  ::handler)
-
 (s/defschema MatchResult
   [(s/either
     s/Keyword
@@ -49,18 +45,17 @@
    If there is a handler located at the specified path,
     returns the handler and the matching path segments, grouping the multiple segments
     that match a multiple-wildcard into a single seq.
-    Multiple-wildcards are greedy: if there is ambiguity,
-     earlier wildcards capture more than the ones that follow them.
+    Multiple-wildcards can only appear above the leaf.
 
    At each level, the lookup prioritizes literal matches over single-wildcards,
     and single-wildcards over multiple-wildcards.
     The search will backtrack to try all possible matching routes.
     Returns nil if no match is found."
-  ([node path] (prefix-lookup node [] (conj path +handler-key+)))
-  ([node result :- MatchResult path :- [s/Keyword]]
+  ([node path] (prefix-lookup node [] path))
+  ([node result :- MatchResult path :- [(s/either s/Str s/Keyword)]]
      (let [[x & xs] path]
-       (if (= x +handler-key+)
-         (when-let [handler (get node +handler-key+)]
+       (if (keyword? x)
+         (when-let [handler (get node x)]
            {:match-result result
             :handler handler})
          (or
@@ -71,7 +66,7 @@
                 (prefix-lookup subtree (conj result x) xs)))
             [x +single-wildcard+]))
           (when-let [rec (get node +multiple-wildcard+)]
-            (let [[match remainder] (split-with #(not= % +handler-key+) path)]
+            (let [[match remainder] (split-with (comp not keyword?) path)]
               (prefix-lookup rec (conj result match) remainder))))))))
 
 (s/defn uri-arg [s :- String]
@@ -81,9 +76,9 @@
 (s/defn match-segment :- s/Keyword
   [segment :- s/Str]
   (cond
+   (= ":*" segment) +multiple-wildcard+
    (uri-arg segment) +single-wildcard+
-   (= "*" segment) +multiple-wildcard+
-   :else (keyword segment)))
+   :else segment))
 
 (defn uri-arg-map [split]
   (->> split
@@ -99,14 +94,13 @@
 
 (defnk request->path-seq [uri request-method :as request]
   (-> (vec (split-path uri))
-      (conj (str/upper-case (name request-method)))
-      (->> (map keyword))
+      (conj request-method)
       vec))
 
-(s/defn compile-handler [handler]
-  (let [split (-> handler fnhouse/path (.replaceAll "\\$" "/") split-path)]
+(defnk compile-handler [handler [:info path method]]
+  (let [split (handlers/split-path path)]
     {:handler handler
-     :match-path (-> (map match-segment split) vec (conj +handler-key+))
+     :match-path (conj (vec (map match-segment split)) method)
      :uri-arg-map (uri-arg-map split)}))
 
 (defn build-prefix-map [handlers]
@@ -117,10 +111,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public
 
-(defn root-handler
+(s/defn root-handler
   "Takes a seq of handlers, returns a single handler that routes the request, and processes
     uri arguments to the appropriate input handler based on the path."
-  [handlers]
+  [handlers :- [handlers/AnnotatedHandler]]
   (let [prefix-map (build-prefix-map handlers)]
     (fn [request]
       (if-let [found (->> request request->path-seq (prefix-lookup prefix-map))]

@@ -43,7 +43,7 @@
   KeywordMap)
 
 (s/defschema AnnotatedHandler
-  {:handler-info fnhouse/HandlerInfo
+  {:info fnhouse/HandlerInfo
    :handler RingHandler})
 
 (s/defschema ProtoHandler
@@ -52,7 +52,7 @@
          :resources Resources}))
 
 (s/defschema AnnotatedProtoHandler
-  {:handler-info fnhouse/HandlerInfo
+  {:info fnhouse/HandlerInfo
    :proto-handler ProtoHandler})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -106,17 +106,18 @@
 
 (defn validate-body [source-map method body]
   (assert
-   (= (boolean (#{:post :put} method)) (boolean body))
+   (or (not (boolean body)) (boolean (#{:post :put} method)))
    (str "Body only allowed in post or put method in " source-map)))
 
-(s/defn ^:always-validate var->handler-info :- fnhouse/HandlerInfo
+(s/defn ^:always-validate var->info :- fnhouse/HandlerInfo
   "Extract the handler info for the function referred to by the specified var."
   [route-prefix :- s/Str
    var :- Var
    & [extra-info-fn]]
   (letk [[method route] (-> var function-name parse-method-name)
          [{doc ""} {path route}] (meta var)
-         [{resources {}} [:request {uri-args {}} {body nil} {query-params {}}]] (pfnk/input-schema @var)]
+         [{resources {}} {request {}}] (pfnk/input-schema @var)
+         [{uri-args {}} {body nil} {query-params {}}] request]
     (let [full-path (str route-prefix path)
           declared-args (declared-uri-args full-path)
           source-map (select-keys (meta var) [:line :column :file :ns :name])]
@@ -143,13 +144,13 @@
 (s/defn compile-handler :- AnnotatedHandler
   "Partially apply the the handler to the resources"
   [resources handler :- AnnotatedProtoHandler]
-  (letk [[proto-handler handler-info] handler]
+  (letk [[proto-handler info] handler]
     (-> handler
         (dissoc :proto-handler)
         (assoc :handler
           (pfnk/fn->fnk
            (fn [request] (proto-handler {:request request :resources resources}))
-           [(:request handler-info) (:response handler-info)])))))
+           [(:request info) (:response info)])))))
 
 (s/defn curry-handlers :- (s/=> [AnnotatedHandler] Resources)
   "Compute a curried version of the handlers that partially
@@ -158,7 +159,7 @@
   (pfnk/fn->fnk
    (fn [resources] (map #(compile-handler resources %) proto-handlers))
    [(->> proto-handlers
-         (map #(safe-get-in % [:handler-info :resources]))
+         (map #(safe-get-in % [:info :resources]))
          (reduce schema/union-input-schemata {}))
     [AnnotatedHandler]]))
 
@@ -173,7 +174,7 @@
   (let [route-prefix (if (seq route-prefix) (str "$" route-prefix) "")]
     (for [var (vals (ns-interns ns-sym))
           :when (valid-handler? var)]
-      {:handler-info (var->handler-info route-prefix var extra-info-fn)
+      {:info (var->info route-prefix var extra-info-fn)
        :proto-handler (-> (fn redefable [m] (@var m))
                           (propagate-meta @var)
                           (propagate-meta var))})))
