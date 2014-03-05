@@ -132,7 +132,7 @@
        :path full-path
        :method method
 
-       ;; TODO :responses
+       :responses (pfnk/output-schema @var)
 
        :resources resources
        :short-description (-> doc (str/split #"\n" 2) first)

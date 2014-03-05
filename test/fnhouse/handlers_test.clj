@@ -20,7 +20,7 @@
           :method :get}
          (parse-method-name "path/to/my/method$get"))))
 
-(defnk ^:private $test$:handler$:uri-arg$POST :- {:success? Boolean}
+(defnk ^:private $test$:handler$:uri-arg$POST :- (fnhouse/responses 200 "result" {:success? Boolean})
   "This is my test handler.
 
    It depends on resources and a request, and produces a result."
@@ -44,7 +44,7 @@
         data-store (atom [])
         annotated-handlers (handlers-fn {:data-store data-store})]
     (letk [[handler
-            [:info resources
+            [:info resources responses
              method path short-description description annotations
              [:request uri-args body query-params]]]
            (singleton annotated-handlers)]
@@ -54,6 +54,7 @@
               :qp1 s/Str
               (s/optional-key :qp2) s/Int}
              query-params))
+      (is (= (fnhouse/responses 200 "result" {:success? Boolean}) responses))
       (is (= {s/Keyword s/Any :data-store s/Any} resources))
       (is (= "/my-test/test/:handler/:uri-arg" path))
       (is (= :post method))
