@@ -5,9 +5,11 @@
    [schema.core :as s]
    [plumbing.graph :as graph]
    [clojure.string :as str]
+   [plumbing.fnk.schema :as schema]
    [plumbing.fnk.pfnk :as pfnk]
    [plumbing.fnk.schema :as schema]
-   [plumbing.map :as map]))
+   [plumbing.map :as map])
+  (:import [clojure.lang Namespace]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Schema
@@ -80,46 +82,57 @@
    :code code
    :body body})
 
+(def rest-methods
+  #{:get :head :post :put :delete})
+
+(s/defn split-path :- [s/Str]
+  [path :- s/Str]
+  (keep not-empty (.split path "\\$")))
+
+(s/defn uri-arg [s :- String]
+  (when (.startsWith s ":")
+    (keyword (subs s 1))))
+
+(s/defschema FnkArg
+  (s/either
+   s/Keyword
+   (s/optional-key s/Keyword)))
+
+
+(s/defschema QueryParamSchema
+  {s/Keyword Schema})
+
 (s/defschema HandlerInfo
-  (s/both
-   {:path String
-    :method (s/enum :get :head :post :put :delete)
+  {:path String
+   :method (apply s/enum rest-methods)
 
-    :short-description s/Str
-    :description s/Str
+   :short-description s/Str
+   :description s/Str
 
-    :uri-args {s/Keyword (s/protocol s/Schema)}
-    :body (s/maybe s/Schema)
-    :query-params {s/Keyword (s/protocol s/Schema)
-                   (s/optional-key s/Keyword) Schema} ;; good luck
+   :request {:body (s/maybe Schema)
+             :query-params schema/InputSchema
+             :uri-args {s/Keyword Schema}}
 
+   :resources schema/InputSchema
 
-    ;; maybe include a per-response doc format
-    :responses String ;;TODO: Responses
+   ;; maybe include a per-response doc format
+   ;;:responses String ;;TODO: Responses
 
-    :source-map (s/maybe
-                 {:line s/Int
-                  :column s/Int
-                  :file s/Str
-                  :ns s/Str
-                  :name s/Str})
+   :source-map (s/maybe
+                {:line s/Int
+                 :column s/Int
+                 :file s/Str
+                 :ns Namespace
+                 :name Symbol})
 
-    :annotations s/Any
-    ;; (private, auth level, etc etc ?? ? ??) (maybe just save a key in the meta?)
-    ;; or maybe inject a fn for extracting to nss->route-spec
+   :annotations s/Any
 
-
-    ;; Would you guys want this stuff? we can provide it!
-    ;; :resources ??? ;; schema map, useful?
-    ;; :file/line/var/ns ;; github link
-    ;; :full-request-schema???? ;; probably not useful  (stuff other than params).
-    ;; :full-response-schema???? ;; also probably not useful (stuff other than response body)
-    }
-   (s/pred
-    (fnk [method body]
-      (= (boolean (#{:post :put} method))
-         (boolean body)))
-    'only-post-has-body?)))
+   ;; Would you guys want this stuff? we can provide it!
+   ;; :resources ??? ;; schema map, useful?
+   ;; :file/line/var/ns ;; github link
+   ;; :full-request-schema???? ;; probably not useful  (stuff other than params).
+   ;; :full-response-schema???? ;; also probably not useful (stuff other than response body)
+   })
 
 (s/defn path [handler :- Handler]
   (get (meta handler) :path
