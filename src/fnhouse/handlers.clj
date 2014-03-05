@@ -10,6 +10,15 @@
    [plumbing.map :as map])
   (:import [clojure.lang Namespace]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Schemas
+
+(s/defschema Symbol
+  (s/pred symbol? 'symbol?))
+
+(s/defschema Var
+  (s/pred var? 'var?))
+
 (s/defschema KeywordMap
   {s/Keyword s/Any})
 
@@ -20,49 +29,70 @@
     :query-params KeywordMap
     :body s/Any}))
 
-(s/defschema Schema (s/protocol s/Schema))
-
 (s/defschema RingResponse
-  s/Any)
+  {(s/optional-key :status) s/Int
+   (s/optional-key :headers) s/Any
+   :body s/Any})
 
 (s/defschema RingHandler
   (s/=> RingResponse RingRequest))
 
-(s/defschema Handler
+(s/defschema Resources
+  KeywordMap)
+
+(s/defschema AnnotatedHandler
   {:handler-info fnhouse/HandlerInfo
    :handler RingHandler})
 
-(s/defschema Symbol
-  (s/pred symbol? 'symbol?))
+(s/defschema ProtoHandler
+  (s/=> RingResponse
+        {:request RingRequest
+         :resources Resources}))
 
-(s/defschema Var
-  (s/pred var? 'var?))
+(s/defschema AnnotatedProtoHandler
+  {:handler-info fnhouse/HandlerInfo
+   :proto-handler ProtoHandler})
 
-(defmacro spy [x & [context]]
-  `(let [context# ~context
-         x# ~x
-         file# ~*ns*
-         line# ~(:line (meta &form))]
-     (println "SPY" (str file# ":" line# " " context#))
-     (clojure.pprint/pprint x#)
-     x#))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Private
+
+(s/defn function-name :- String
+  [var :- Var]
+  (-> var meta (safe-get :name) name))
+
+(defn propagate-meta
+  "Copy the meta from one object into another without overwriting any existing fields."
+  [to from]
+  (vary-meta
+   to
+   (fn [to-meta from-meta] (merge from-meta to-meta))
+   (meta from)))
+
 
 (s/defn split-path :- [s/Str]
   [path :- s/Str]
   (keep not-empty (.split path "\\$")))
 
-(s/defn uri-arg [s :- String]
+(s/defn uri-arg :- (s/maybe s/Keyword)
+  [s :- String]
   (when (.startsWith s ":")
     (keyword (subs s 1))))
 
-(s/defn parse-handler-name [handler-name :- s/Str]
-  (let [last-idx (.lastIndexOf handler-name "$")]
-    {:route (-> handler-name
-                (subs 0 last-idx))
-     :method (-> handler-name
-                 (subs (inc last-idx))
-                 str/lower-case
-                 keyword)}))
+(s/defn declared-uri-args :- #{s/Keyword}
+  "Returns the set of uri-args present in the method path"
+  [full-path :- s/Str]
+  (->> full-path split-path (keep uri-arg) set))
+
+(s/defn parse-method-name [method-name :- s/Str]
+  (let [last-idx (.lastIndexOf method-name "$")]
+    {:route (-> method-name (subs 0 last-idx))
+     :method (-> method-name (subs (inc last-idx)) str/lower-case keyword)}))
+
+
+(s/defn valid-handler?
+  "Returns true for functions that can be converted into handlers"
+  [var :- Var]
+  (and (.startsWith (function-name var) "$") (fn? @var)))
 
 (defn validate-uri-args [source-map uri-args declared-args]
   (let [undeclared-args (remove
@@ -75,26 +105,14 @@
 (defn validate-body [source-map method body]
   (assert
    (= (boolean (#{:post :put} method)) (boolean body))
-   (str "Body present in non-post or put method in " source-map)))
-
-(s/defn method-name :- String
-  [var :- Var]
-  (-> var meta (safe-get :name) name))
-
-(s/defn valid-handler? [var :- Var]
-  (and (.startsWith (method-name var) "$") (fn? @var)))
-
-(s/defn declared-uri-args :- #{s/Keyword}
-  [full-path :- s/Str]
-  (->> full-path split-path (keep uri-arg) set))
+   (str "Body only allowed in post or put method in " source-map)))
 
 (s/defn ^:always-validate var->handler-info :- fnhouse/HandlerInfo
-  "If the input variable refers to a function that starts with a $,
-    return the function annotated with the metadata of the variable."
+  "Extract the handler info for the function referred to by the specified var."
   [route-prefix :- s/Str
    var :- Var
-   & [annotation-fn]]
-  (letk [[method route] (-> var method-name parse-handler-name)
+   & [extra-info-fn]]
+  (letk [[method route] (-> var function-name parse-method-name)
          [{doc ""} {path route}] (meta var)
          [{resources {}} [:request {uri-args {}} {body nil} {query-params {}}]] (pfnk/input-schema @var)]
     (let [full-path (str route-prefix path)
@@ -118,19 +136,11 @@
        :description doc
 
        :source-map source-map
-       :annotations (when annotation-fn (annotation-fn var))})))
+       :annotations (when extra-info-fn (extra-info-fn var))})))
 
-(defn propagate-meta
-  "Copy the meta from one object into another without overwriting any existing fields."
-  [to from]
-  (vary-meta
-   to
-   (fn [to-meta from-meta] (merge from-meta to-meta))
-   (meta from)))
-
-(s/defn compile-handler :- Handler
-  "Partially apply the the handler to the resources and return a fnk from request to response"
-  [resources handler]
+(s/defn compile-handler :- AnnotatedHandler
+  "Partially apply the the handler to the resources"
+  [resources handler :- AnnotatedProtoHandler]
   (letk [[proto-handler handler-info] handler]
     (-> handler
         (dissoc :proto-handler)
@@ -139,41 +149,41 @@
            (fn [request] (proto-handler {:request request :resources resources}))
            [(:request handler-info) (:response handler-info)])))))
 
-(s/defn compile-routes
-  "Take a seq of handlers and produce a single fnk from resources to seq of handlers.
-   Each handler in the returned seq is a fnk from request to response.
-   Conceptually, this function returns a curried version of the handlers
-    that partially applies each handler to the resources."
-  [handlers]
+(s/defn curry-handlers :- (s/=> [AnnotatedHandler] Resources)
+  "Compute a curried version of the handlers that partially
+    applies each proto-handler to the resources."
+  [proto-handlers :- [AnnotatedProtoHandler]]
   (pfnk/fn->fnk
-   (fn [resources] (map #(compile-handler resources %) handlers))
-   [(->> handlers
+   (fn [resources] (map #(compile-handler resources %) proto-handlers))
+   [(->> proto-handlers
          (map #(safe-get-in % [:handler-info :resources]))
          (reduce schema/union-input-schemata {}))
-    [Handler]]))
+    [AnnotatedHandler]]))
 
-(s/defn ns->handler-fns
-  "Take a namespace and optional prefix, return a seq of all the functions that
-    can be converted to handlers in the namespace annotated with metadata."
+(s/defn ns->handler-fns :- [AnnotatedProtoHandler]
+  "Take a route prefix and namespace, return a seq of all the functions
+    can be converted to handlers in the namespace along with their handler info."
   [route-prefix :- String
    ns-sym :- Symbol
-   & [annotation-fn]]
+   & [extra-info-fn]]
   (assert (not (.startsWith route-prefix "$")))
   (assert (not (.endsWith route-prefix "$")))
   (let [route-prefix (if (seq route-prefix) (str "$" route-prefix) "")]
     (for [var (vals (ns-interns ns-sym))
           :when (valid-handler? var)]
-      {:handler-info (var->handler-info route-prefix var annotation-fn)
+      {:handler-info (var->handler-info route-prefix var extra-info-fn)
        :proto-handler (-> (fn redefable [m] (@var m))
                           (propagate-meta @var)
                           (propagate-meta var))})))
 
-(s/defn nss->handlers-fn :- (=> [Handler] (s/named KeywordMap "resources"))
-  "Take a map from prefix to namespace symbol,
-   return a fnk from resources to a seq of fnk handlers,
-    each of which takes a request and produces a response."
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Public
+
+(s/defn nss->handlers-fn :- (s/=> [AnnotatedHandler] Resources)
   [prefix->ns-sym :- {(s/named s/Str "route prefix")
-                      (s/named Symbol "namespace")}]
+                      (s/named Symbol "namespace")}
+   & [extra-info-fn]]
   (->> prefix->ns-sym
-       (mapcat #(apply ns->handler-fns %))
-       compile-routes))
+       (mapcat (fn [[prefix ns-sym]] (ns->handler-fns prefix ns-sym extra-info-fn)))
+       curry-handlers))
