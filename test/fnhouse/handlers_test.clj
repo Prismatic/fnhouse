@@ -1,7 +1,6 @@
 (ns fnhouse.handlers-test
   (:use clojure.test plumbing.core fnhouse.handlers)
   (:require
-   [plumbing.fnk.pfnk :as pfnk]
    [fnhouse.core :as fnhouse]
    [schema.core :as s]))
 
@@ -13,12 +12,12 @@
   (is (nil? (uri-arg "x"))))
 
 (deftest declared-uri-args-test
-  (is (= #{:b :*} (declared-uri-args "/a/:b/c/:*/d"))))
+  (is (= #{:b :**} (declared-uri-args "/a/:b/c/:**/d"))))
 
-(deftest parse-method-name-test
+(deftest route-and-method-test
   (is (= {:route "path/to/my/method"
           :method :get}
-         (parse-method-name "path/to/my/method$get"))))
+         (route-and-method "path/to/my/method$get"))))
 
 (defnk ^:private $test$:handler$:uri-arg$POST :- (fnhouse/responses 200 "result" {:success? Boolean})
   "This is my test handler.
@@ -50,10 +49,7 @@
            (singleton annotated-handlers)]
       (is (= {:uri-arg s/Int :handler s/Str} uri-args))
       (is (= {:body-arg s/Keyword} body))
-      (is (= {s/Keyword s/Any
-              :qp1 s/Str
-              (s/optional-key :qp2) s/Int}
-             query-params))
+      (is (= {:qp1 s/Str (s/optional-key :qp2) s/Int} query-params))
       (is (= (fnhouse/responses 200 "result" {:success? Boolean}) responses))
       (is (= {s/Keyword s/Any :data-store s/Any} resources))
       (is (= "/my-test/test/:handler/:uri-arg" path))

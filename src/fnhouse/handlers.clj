@@ -1,14 +1,12 @@
 (ns fnhouse.handlers
   (:use plumbing.core)
   (:require
-   [schema.core :as s]
-   [plumbing.graph :as graph]
-   [fnhouse.core :as fnhouse]
    [clojure.string :as str]
+   [schema.core :as s]
    [plumbing.fnk.pfnk :as pfnk]
    [plumbing.fnk.schema :as schema]
-   [plumbing.map :as map])
-  (:import [clojure.lang Namespace Symbol Var]))
+   [fnhouse.core :as fnhouse])
+  (:import [clojure.lang Symbol Var]))
 
 (set! *warn-on-reflection* true)
 
@@ -52,7 +50,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
-(s/defn function-name :- String
+(s/defn var-name :- String
   [var :- Var]
   (-> var meta (safe-get :name) name))
 
@@ -70,61 +68,66 @@
   [full-path :- s/Str]
   (->> full-path split-path (keep uri-arg) set))
 
-(s/defn parse-method-name [method-name :- String] ;; TODO name is confusing
+(s/defn route-and-method [method-name :- String]
   (let [last-idx (.lastIndexOf method-name "$")]
-    {:route (-> method-name (subs 0 last-idx)) ;; TODO Also munge?
+    {:route (-> method-name (subs 0 last-idx) (str/replace "$" "/"))
      :method (-> method-name (subs (inc last-idx)) str/lower-case keyword)}))
-
 
 (s/defn valid-handler?
   "Returns true for functions that can be converted into handlers"
   [var :- Var]
-  (and (.startsWith (function-name var) "$") (fn? @var)))
+  (and (.startsWith (var-name var) "$") (fn? @var)))
 
-;; TODO: inline these
-(defn validate-uri-args [source-map uri-args declared-args]
-  (let [undeclared-args (remove declared-args (keys uri-args))]
-    (assert
-     (empty? undeclared-args)
-     (format "Undeclared args %s in %s" (vec undeclared-args) source-map))))
+(s/defn source-map [var :- Var]
+  (-> (meta var)
+      (select-keys [:line :column :file :ns :name])
+      (update-in [:name] name)
+      (update-in [:ns] str)))
 
-(defn validate-body [source-map method body]
-  (assert
-   (or (not (boolean body)) (boolean (#{:post :put} method)))
-   (str "Body only allowed in post or put method in " source-map)))
+(defnk source-map->str [ns name file line]
+  (format "%s/%s (%s:%s)" ns name file line))
 
-(s/defn ^:always-validate var->info :- fnhouse/HandlerInfo
+(s/defn var->info :- fnhouse/HandlerInfo
   "Extract the handler info for the function referred to by the specified var."
   [route-prefix :- s/Str
    var :- Var
    extra-info-fn]
-  (letk [[method route] (-> var function-name parse-method-name)
+  (letk [[method route] (-> var var-name route-and-method)
          [{doc ""} {path route}] (meta var)
          [{resources {}} {request {}}] (pfnk/input-schema @var)
          [{uri-args {}} {body nil} {query-params {}}] request]
-    (let [explicit-uri-args (dissoc uri-args s/Keyword)
-          full-path (str/replace (str route-prefix path) "$" "/")
+    (let [source-map (source-map var)
+          explicit-uri-args (dissoc uri-args s/Keyword)
+          full-path (str route-prefix path)
           declared-args (declared-uri-args full-path)
-          source-map (select-keys (meta var) [:line :column :file :ns :name])]
-      (validate-uri-args source-map explicit-uri-args declared-args)
-      (validate-body source-map method body)
-      {:request {:query-params query-params
-                 :body (dissoc body s/Keyword)
-                 :uri-args (merge
-                            (map-from-keys (constantly s/Str) declared-args)
-                            uri-args)}
+          undeclared-args (remove declared-args (keys explicit-uri-args))
+          info {:request {:query-params (dissoc query-params s/Keyword)
+                          :body (dissoc body s/Keyword)
+                          :uri-args (merge
+                                     (map-from-keys (constantly s/Str) declared-args)
+                                     explicit-uri-args)}
 
-       :path full-path
-       :method method
+                :path full-path
+                :method method
 
-       :responses (pfnk/output-schema @var)
+                :responses (pfnk/output-schema @var)
 
-       :resources resources
-       :short-description (-> doc (str/split #"\n" 2) first)
-       :description doc
+                :resources resources
+                :short-description (-> doc (str/split #"\n" 2) first)
+                :description doc
 
-       :source-map source-map
-       :annotations (extra-info-fn var)})))
+                :source-map source-map
+                :annotations (extra-info-fn var)}]
+
+      (when-let [error (s/check fnhouse/HandlerInfo info)]
+        (throw (IllegalArgumentException. (format "%s in %s" error (source-map->str source-map)))))
+      (assert
+       (empty? undeclared-args)
+       (format "Undeclared args %s in %s" (vec undeclared-args) (source-map->str source-map)))
+      (assert
+       (or (not (boolean body)) (boolean (#{:post :put} method)))
+       (str "Body only allowed in post or put method in " (source-map->str source-map)))
+      info)))
 
 (s/defn compile-handler :- AnnotatedHandler
   "Partially apply the the handler to the resources"
@@ -152,9 +155,7 @@
   [route-prefix :- String
    ns-sym :- Symbol
    extra-info-fn]
-  (assert (not (.startsWith route-prefix "$")))
-  (assert (not (.endsWith route-prefix "$")))
-  (let [route-prefix (if (seq route-prefix) (str "$" route-prefix) "")]
+  (let [route-prefix (if (seq route-prefix) (str "/" route-prefix) "")]
     (for [var (vals (ns-interns ns-sym))
           :when (valid-handler? var)]
       {:info (var->info route-prefix var extra-info-fn)

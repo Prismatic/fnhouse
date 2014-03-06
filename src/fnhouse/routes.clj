@@ -1,12 +1,8 @@
 (ns fnhouse.routes
   (:use plumbing.core)
   (:require
-   [plumbing.map :as map]
-   [fnhouse.core :as fnhouse]
-   [fnhouse.handlers :as handlers]
-   [clojure.string :as str]
-   [schema.core :as s])
-  (:import [java.net URLDecoder]))
+   [schema.core :as s]
+   [fnhouse.handlers :as handlers]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Local Definitions
@@ -19,11 +15,6 @@
   "Matches one or more route segments"
   ::**)
 
-(s/defschema MatchResult
-  [(s/either
-    s/Keyword
-    (s/named [s/Keyword] "multiple-wildcard match"))])
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
@@ -31,16 +22,19 @@
   "Transform a seq of [keyseq leaf-val] pairs into a nested map.
    If one keyseq is a prefix of another, you're on your own."
   [s]
-  (reduce (fn [m [ks v]]
-            (if (seq ks)
-              (update-in
-               m ks
-               (fn [old-value]
-                 (assert (nil? old-value) (str "duplicate keyseq " ks))
-                 v))
-              v))
-          {}
-          s))
+  (reduce
+   (fn [m [ks v]]
+     (if (seq ks)
+       (update-in
+        m ks
+        (fn [old-value]
+          (assert
+           (nil? old-value)
+           (str "duplicate keyseq " ks))
+          v))
+       v))
+   {}
+   s))
 
 (s/defn prefix-lookup
   "Recursively looks up the specified path starting at the given node.
@@ -54,7 +48,7 @@
     The search will backtrack to try all possible matching routes.
     Returns nil if no match is found."
   ([node path] (prefix-lookup node [] path))
-  ([node result :- MatchResult path :- [(s/either s/Str s/Keyword)]]
+  ([node result path :- [(s/either s/Str s/Keyword)]]
      (let [[x & xs] path]
        (if (keyword? x)
          (when-let [handler (get node x)]
@@ -78,7 +72,7 @@
 (s/defn match-segment :- s/Keyword
   [segment :- s/Str]
   (cond
-   (= ":*" segment) +multiple-wildcard+
+   (= ":**" segment) +multiple-wildcard+
    (uri-arg segment) +single-wildcard+
    :else segment))
 
@@ -108,7 +102,7 @@
 (defn build-prefix-map [handlers]
   (->> handlers
        (map (comp (juxt :match-path identity) compile-handler))
-       map/unflatten))
+       safe-unflatten))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public

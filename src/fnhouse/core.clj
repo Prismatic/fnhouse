@@ -21,15 +21,16 @@
   {:description s/Str
    :value Schema})
 
-(defrecord Responses [status->response-schema]
+(defrecord ResponseBodies [status->response-schema]
   s/Schema
   (walker [this]
     (let [status->subwalker
           (map-vals (fnk [value] (s/subschema-walker value)) status->response-schema)]
-      (fnk [status :as x]
+      (fnk [{status 200} :as response]
         (if-let [sub-walker (get status->subwalker status)]
-          (sub-walker (dissoc x :status))
-          (schema-macros/validation-error this x (list 'unschematized-status? (schema-utils/value-name x)))))))
+          (sub-walker (:body response))
+          (->> (list 'unschematized-status? (schema-utils/value-name response))
+               (schema-macros/validation-error this response))))))
   (explain [this] nil
     (list 'responses status->response-schema)))
 
@@ -46,19 +47,14 @@
 
    :resources schema/InputSchema
 
-   :responses Responses
-
-   ;; maybe include a per-response doc format
-   ;;:responses String ;;TODO: Responses
+   :responses ResponseBodies
 
    :source-map (s/maybe
                 {:line s/Int
                  :column s/Int
                  :file s/Str
-                 :ns Namespace ;; TODO: string
-                 :name Symbol ;; TODO: string
-
-                 })
+                 :ns s/Str
+                 :name s/Str})
 
    :annotations s/Any
 
@@ -74,9 +70,13 @@
 ;; maybe in other file.
 
 (defn responses [& args]
-  ;; TODO: better error messages. Check for trailing code.
-  (Responses.
-   (for-map [[[code] body] (->> args (partition-by integer?) (partition 2))]
+  (assert (integer? (first args)) "arguments must specify a status response code")
+  (ResponseBodies.
+   (for-map [[[code] body] (->> args (partition-by integer?) (partition-all 2))]
      code (case (count body)
-            1 {:description "" :value (first body)}
-            2 {:description (first body) :value (second body)}))))
+            1 {:description "" :value (s/validate Schema (first body))}
+            2 {:description (s/validate String (first body))
+               :value (s/validate Schema (second body))}
+            (throw (Exception.
+                    (str args " is not a sequence of: <response-code> "
+                         "<optional-description> <body-schema>")))))))

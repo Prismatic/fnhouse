@@ -56,7 +56,7 @@
 
 (deftest match-segment-test
   (is (= +single-wildcard+ (match-segment ":x")))
-  (is (= +multiple-wildcard+ (match-segment ":*")))
+  (is (= +multiple-wildcard+ (match-segment ":**")))
   (is (= "y" (match-segment "y"))))
 
 (deftest uri-arg-map-test
@@ -81,17 +81,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test Handlers
 
-(defmacro capture-wildcard [s]
-  [:* :as ] :- s/Str)
-
 (defnk $GET :- (fnhouse/responses 200 s/Any)
   []
   {:body "You've hit the root"})
 
 (defnk $a$:uri-arg$b$:**$GET :- (fnhouse/responses 200 s/Any)
   [[:request
-    [:uri-args [:* ] uri-arg :- s/Int]]]
-  {:uri-arg uri-arg :wild-card *})
+    [:uri-args ** :- [s/Str] uri-arg :- s/Int]]]
+  {:uri-arg uri-arg :wild-card **})
 
 (defnk $x$:a$y$:b$POST :- (fnhouse/responses 200 s/Any)
   [[:request
