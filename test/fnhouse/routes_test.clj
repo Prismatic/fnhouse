@@ -81,14 +81,17 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test Handlers
 
+(defmacro capture-wildcard [s]
+  [:* :as ] :- s/Str)
+
 (defnk $GET :- (fnhouse/responses 200 s/Any)
   []
   {:body "You've hit the root"})
 
-(defnk $a$:uri-arg$b$:*$GET :- (fnhouse/responses 200 s/Any)
+(defnk $a$:uri-arg$b$:**$GET :- (fnhouse/responses 200 s/Any)
   [[:request
-    [:uri-args uri-arg :- s/Int]]]
-  uri-arg)
+    [:uri-args [:* ] uri-arg :- s/Int]]]
+  {:uri-arg uri-arg :wild-card *})
 
 (defnk $x$:a$y$:b$POST :- (fnhouse/responses 200 s/Any)
   [[:request
@@ -101,13 +104,13 @@
         handlers (svc-fn {})
         h (root-handler handlers)]
 
-    #_(is (= {:body "You've hit the root"}
-             (h {:request-method :get
-                 :uri "/test"})))
-
-    (is (= "1337"
+    (is (= {:body "You've hit the root"}
            (h {:request-method :get
-               :uri "/test/a/1337/b/wild/"})))
+               :uri "/test"})))
+
+    (is (= {:uri-arg "1337" :wild-card ["wild" "card"]}
+           (h {:request-method :get
+               :uri "/test/a/1337/b/wild/card"})))
 
     (is (= {:a "a-match" :b "b-match"}
            (h {:request-method :post

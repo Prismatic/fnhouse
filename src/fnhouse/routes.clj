@@ -11,15 +11,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Local Definitions
 
-(defmacro spy [x & [context]]
-  `(let [context# ~context
-         x# ~x
-         file# ~*ns*
-         line# ~(:line (meta &form))]
-     (println "SPY" (str file# ":" line# " " context#))
-     (clojure.pprint/pprint x#)
-     x#))
-
 (def +single-wildcard+
   "Matches a single route segment"
   ::*)
@@ -35,6 +26,21 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
+
+(defn safe-unflatten
+  "Transform a seq of [keyseq leaf-val] pairs into a nested map.
+   If one keyseq is a prefix of another, you're on your own."
+  [s]
+  (reduce (fn [m [ks v]]
+            (if (seq ks)
+              (update-in
+               m ks
+               (fn [old-value]
+                 (assert (nil? old-value) (str "duplicate keyseq " ks))
+                 v))
+              v))
+          {}
+          s))
 
 (s/defn prefix-lookup
   "Recursively looks up the specified path starting at the given node.

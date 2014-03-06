@@ -10,32 +10,10 @@
    [schema.macros :as schema-macros]
    [schema.utils :as schema-utils]
    [plumbing.map :as map])
-  (:import [clojure.lang Namespace]))
+  (:import [clojure.lang Namespace Symbol]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Schema
-
-(s/defschema KeywordMap
-  {s/Keyword s/Any})
-
-(s/defschema RingRequest
-  (map-keys
-   s/optional-key
-   {:uri-args KeywordMap
-    :query-params KeywordMap
-    :body s/Any}))
-
-(s/defschema RingResponse
-  s/Any)
-
-(s/defschema Handler
-  (s/=> RingResponse RingRequest))
-
-(s/defschema Symbol
-  (s/pred symbol? 'symbol?))
-
-(s/defschema Var
-  (s/pred var? 'var?))
 
 (s/defschema Schema (s/protocol s/Schema))
 
@@ -77,14 +55,14 @@
                 {:line s/Int
                  :column s/Int
                  :file s/Str
-                 :ns Namespace
-                 :name Symbol})
+                 :ns Namespace ;; TODO: string
+                 :name Symbol ;; TODO: string
+
+                 })
 
    :annotations s/Any
 
    ;; Would you guys want this stuff? we can provide it!
-   ;; :resources ??? ;; schema map, useful?
-   ;; :file/line/var/ns ;; github link
    ;; :full-request-schema???? ;; probably not useful  (stuff other than params).
    ;; :full-response-schema???? ;; also probably not useful (stuff other than response body)
    })
@@ -93,7 +71,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public
 
+;; maybe in other file.
+
 (defn responses [& args]
+  ;; TODO: better error messages. Check for trailing code.
   (Responses.
    (for-map [[[code] body] (->> args (partition-by integer?) (partition 2))]
      code (case (count body)
