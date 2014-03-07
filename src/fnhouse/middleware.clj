@@ -9,30 +9,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
-;; annotated-handler -> handler
-
-;; (handler-info, handler) + behavior
-
-;; => output-request-data => response
-
-;; resources -> response-schema -> input-response-data -> output-ouptput-data
-
-
-
-;; coercer...
-;; (coerce/coercer schema coercer-fn) -> data -> coerced-data-or-error
-
-
-
-
-;; goes away
-(defn allow-extra
-  "Allow any number of additional keyword->anything in a map schema."
-  [schema]
-  (if (contains? schema s/Keyword)
-    schema
-    (assoc schema s/Keyword s/Any)))
-
 (def ^:private ^:dynamic *request*
   "Dynamic var used to propagate the request into the walk."
   ::error)
@@ -93,7 +69,26 @@
    this API method.  Coercion is extensible by defining an implementation of
    'coercer' above for your function."
   [output-coercer handler-info]
-  (coerce/coercer (safe-get handler-info :responses) (bind-request output-coercer)))
+  (letk [[responses] handler-info]
+    (let [coercion-matcher (bind-request output-coercer)
+          response-walkers (map-vals
+                            (fn [resp-schema]
+                              (assert (contains? resp-schema :body)
+                                      (format "Response %s for %s missing body"
+                                              resp-schema handler-info))
+                              (error-wrap
+                               :response
+                               (coerce/coercer resp-schema coercion-matcher)))
+                            responses)]
+      (fn [request response]
+        (update-in response [:body]
+                   (partial (safe-get response-walkers (response :status 200))
+                            request)))))
+
+
+  #_  (coerce/coercer (safe-get handler-info :responses) (bind-request output-coercer))
+
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
@@ -106,9 +101,12 @@
   (fnk [handler info :as annotated-handler]
     (let [request-walker (request-walker input-coercer info)
           response-walker (response-walker output-coercer info)]
-      (fn [request]
-        (let [walked-request (request-walker request)]
-          (->> walked-request
-               handler
-               (response-walker walked-request))))
-      annotated-handler)))
+      {:info info
+       :handler
+       (fn [request]
+
+         (let [walked-request (request-walker request)
+               handled-request (handler walked-request)
+               walked-response (response-walker walked-request handled-request)]
+           (println "walked-response " walked-response)
+           walked-response))})))

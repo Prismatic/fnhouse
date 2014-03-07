@@ -19,11 +19,12 @@
           :method :get}
          (route-and-method "path/to/my/method$get"))))
 
-(defnk ^:private $test$:handler$:uri-arg$POST :- (fnhouse/responses 200 "result" {:success? Boolean})
+(defnk ^:private $test$:handler$:uri-arg$POST
   "This is my test handler.
 
    It depends on resources and a request, and produces a result."
-  {:auth-level #{:admin}}
+  {:auth-level #{:admin}
+   :responses {200 {:success? Boolean}}}
   [[:request
     [:body body-arg :- s/Keyword]
     [:uri-args uri-arg :- s/Int]
@@ -50,7 +51,7 @@
       (is (= {:uri-arg s/Int :handler s/Str} uri-args))
       (is (= {s/Keyword s/Any :body-arg s/Keyword} body))
       (is (= {s/Keyword s/Any :qp1 s/Str (s/optional-key :qp2) s/Int} query-params))
-      (is (= (fnhouse/responses 200 "result" {:success? Boolean}) responses))
+      (is (= {200 {:success? Boolean}} responses))
       (is (= {s/Keyword s/Any :data-store s/Any} resources))
       (is (= "/my-test/test/:handler/:uri-arg" path))
       (is (= :post method))

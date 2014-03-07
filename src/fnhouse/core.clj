@@ -21,6 +21,8 @@
   {:description s/Str
    :value Schema})
 
+(s/defschema ResponseCode s/Int)
+
 (defrecord ResponseBodies [status->response-schema]
   s/Schema
   (walker [this]
@@ -47,7 +49,7 @@
 
    :resources schema/InputSchema
 
-   :responses ResponseBodies
+   :responses {ResponseCode Schema}
 
    :source-map (s/maybe
                 {:line s/Int
@@ -69,7 +71,18 @@
 
 ;; maybe in other file.
 
+(defmacro spy [x & [context]]
+  `(let [context# ~context
+         x# ~x
+         file# ~*ns*
+         line# ~(:line (meta &form))]
+     (println "SPY" (str file# ":" line# " " context#))
+     (clojure.pprint/pprint x#)
+     x#))
+
+
 (defn responses [& args]
+  (throw (Exception. "e"))
   (assert (integer? (first args)) "arguments must specify a status response code")
   (ResponseBodies.
    (for-map [[[code] body] (->> args (partition-by integer?) (partition-all 2))]

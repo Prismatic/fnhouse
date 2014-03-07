@@ -81,16 +81,19 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test Handlers
 
-(defnk $GET :- (fnhouse/responses 200 s/Any)
+(defnk $GET
+  {:responses {200 s/Any}}
   []
   {:body "You've hit the root"})
 
-(defnk $a$:uri-arg$b$:**$GET :- (fnhouse/responses 200 s/Any)
+(defnk $a$:uri-arg$b$:**$GET
+  {:responses {200 s/Any}}
   [[:request
     [:uri-args ** :- [s/Str] uri-arg :- s/Int]]]
   {:uri-arg uri-arg :wild-card **})
 
-(defnk $x$:a$y$:b$POST :- (fnhouse/responses 200 s/Any)
+(defnk $x$:a$y$:b$POST
+  {:responses {200 s/Any}}
   [[:request
     [:uri-args a :- s/Str b :- s/Str]]]
   {:a a :b b})

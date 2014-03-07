@@ -93,7 +93,7 @@
    var :- Var
    extra-info-fn]
   (letk [[method route] (-> var var-name route-and-method)
-         [{doc ""} {path route}] (meta var)
+         [{doc ""} {path route} {responses {}}] (meta var)
          [{resources {}} {request {}}] (pfnk/input-schema @var)
          [{uri-args {}} {body nil} {query-params {}}] request]
     (let [source-map (source-map var)
@@ -110,7 +110,7 @@
                 :path full-path
                 :method method
 
-                :responses (pfnk/output-schema @var)
+                :responses responses
 
                 :resources resources
                 :short-description (-> doc (str/split #"\n" 2) first)
