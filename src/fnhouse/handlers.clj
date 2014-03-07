@@ -101,8 +101,8 @@
           full-path (str route-prefix path)
           declared-args (declared-uri-args full-path)
           undeclared-args (remove declared-args (keys explicit-uri-args))
-          info {:request {:query-params (dissoc query-params s/Keyword)
-                          :body (dissoc body s/Keyword)
+          info {:request {:query-params query-params
+                          :body body
                           :uri-args (merge
                                      (map-from-keys (constantly s/Str) declared-args)
                                      explicit-uri-args)}

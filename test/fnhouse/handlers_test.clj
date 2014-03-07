@@ -48,8 +48,8 @@
              [:request uri-args body query-params]]]
            (singleton annotated-handlers)]
       (is (= {:uri-arg s/Int :handler s/Str} uri-args))
-      (is (= {:body-arg s/Keyword} body))
-      (is (= {:qp1 s/Str (s/optional-key :qp2) s/Int} query-params))
+      (is (= {s/Keyword s/Any :body-arg s/Keyword} body))
+      (is (= {s/Keyword s/Any :qp1 s/Str (s/optional-key :qp2) s/Int} query-params))
       (is (= (fnhouse/responses 200 "result" {:success? Boolean}) responses))
       (is (= {s/Keyword s/Any :data-store s/Any} resources))
       (is (= "/my-test/test/:handler/:uri-arg" path))

@@ -2,14 +2,30 @@
   "Middleware for coercing and schema-validating inputs and outputs of the API."
   (:use plumbing.core)
   (:require
-   [fnhouse.routes :as routes]
    [schema.coerce :as coerce]
    [schema.core :as s]
    [schema.utils :as utils]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Privet
+;; Private
 
+;; annotated-handler -> handler
+
+;; (handler-info, handler) + behavior
+
+;; => output-request-data => response
+
+;; resources -> response-schema -> input-response-data -> output-ouptput-data
+
+
+
+;; coercer...
+;; (coerce/coercer schema coercer-fn) -> data -> coerced-data-or-error
+
+
+
+
+;; goes away
 (defn allow-extra
   "Allow any number of additional keyword->anything in a map schema."
   [schema]
@@ -18,8 +34,7 @@
     (assoc schema s/Keyword s/Any)))
 
 (def ^:private ^:dynamic *request*
-  "Dynamic var used to propagate the request into the walk.  I think this is necessary
-   until we figure out how to further generalize the walk protocol."
+  "Dynamic var used to propagate the request into the walk."
   ::error)
 
 (defn bind-request
@@ -45,34 +60,28 @@
                  :error error}))
         res))))
 
-
 (defn request-walker
-  "Given resources from the service (determined by keys asked for in v2 middleware)
-   and handler metadata, compile a function for coercing and validating inputs to this
-   API method (uri-args, query-params, and body).  Coercion is extensible by defining
-   an implementation of 'coercer' above for your function."
-  [resources input-coercer handler-meta]
-  (let [coercion-matcher (bind-request (fn [schema] (input-coercer schema resources)))
-        string-matcher (coerce/first-matcher [coercion-matcher coerce/string-coercion-matcher])
-        json-matcher (coerce/first-matcher [coercion-matcher coerce/json-coercion-matcher])
-        method-walkers (map-vals
-                        (fnk method->walkers [{query-params {}} {body nil} returns]
-                          (for-map [[request-key coercer]
-                                    (merge
-                                     (map-vals #(coerce/coercer % string-matcher)
-                                               {:uri-args (:uri-args handler-meta {})
-                                                ;; TODO: make this a flag
-                                                :query-params (allow-extra query-params)})
-                                     (when body {:body (coerce/coercer body json-matcher)}))]
-                            request-key
-                            (error-wrap request-key coercer)))
-                        (safe-get handler-meta :methods))]
-    (fn [request]
-      (reduce-kv
-       (fn [request request-key walker]
-         (update-in request [request-key] (partial walker request)))
-       request
-       (safe-get method-walkers (safe-get request :request-method))))))
+  "Given resources from the service and handler metadata, compile a
+   function for coercing and validating inputs (uri-args,
+   query-params, and body).  Coercion is extensible by defining an
+   implementation of 'coercer' above for your function."
+  [input-coercer handler-info]
+  (letk [[[:request body :as request]] handler-info]
+    (let [coercion-matcher (bind-request input-coercer)
+          string-matcher (coerce/first-matcher [coercion-matcher coerce/string-coercion-matcher])
+          json-matcher (coerce/first-matcher [coercion-matcher coerce/json-coercion-matcher])
+          walker (for-map [[request-key coercer]
+                           (merge (map-vals #(coerce/coercer % string-matcher)
+                                            (select-keys request [:uri-args :query-params]))
+                                  {:body (when body (coerce/coercer body json-matcher))})]
+                   request-key
+                   (error-wrap request-key coercer))]
+      (fn [request]
+        (reduce-kv
+         (fn [request request-key walker]
+           (update-in request [request-key] (partial walker request)))
+         request
+         walker)))))
 
 
 
@@ -83,24 +92,8 @@
    and handler metadata, compile a function for coercing and validating responses from
    this API method.  Coercion is extensible by defining an implementation of
    'coercer' above for your function."
-  [resources output-coercer handler-meta]
-  (let [coercion-matcher (bind-request (fn [schema] (output-coercer schema resources)))
-        method-walkers (map-vals
-                        (fnk [returns]
-                          (map-vals
-                           (fn [resp-schema]
-                             (assert (contains? resp-schema :body)
-                                     (format "Response %s for %s missing body"
-                                             resp-schema handler-meta))
-                             (error-wrap
-                              :response
-                              ;; TODO: allow-extra; don't schematize stuff outside the body
-                              (coerce/coercer (allow-extra resp-schema) coercion-matcher)))
-                           returns))
-                        (safe-get handler-meta :methods))]
-    (fn [request response]
-      ((safe-get-in method-walkers [(safe-get request :request-method) (response :status 200)])
-       request response))))
+  [output-coercer handler-info]
+  (coerce/coercer (safe-get handler-info :responses) (bind-request output-coercer)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
@@ -109,14 +102,13 @@
   "Coerce and validate inputs and outputs.  Use walkers to simultaneously coerce and validate
    inputs in a generous way (i.e., 1.0 in body will be cast to 1 and validate against a long
    schema), and outputs will be clientized to match the output schemas."
-  [resources input-coercer output-coercer]
-  (fn [handler]
-    (let [request-walker (request-walker resources input-coercer (meta handler))
-          response-walker (response-walker resources output-coercer (meta handler))]
-      (routes/propagate-meta
-       (fn [request]
-         (let [walked-request (request-walker request)]
-           (->> walked-request
-                handler
-                (response-walker walked-request))))
-       handler))))
+  [input-coercer output-coercer]
+  (fnk [handler info :as annotated-handler]
+    (let [request-walker (request-walker input-coercer info)
+          response-walker (response-walker output-coercer info)]
+      (fn [request]
+        (let [walked-request (request-walker request)]
+          (->> walked-request
+               handler
+               (response-walker walked-request))))
+      annotated-handler)))

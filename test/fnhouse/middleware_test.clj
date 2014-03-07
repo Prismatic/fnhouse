@@ -1,16 +1,11 @@
-(ns api.v2.support.coercion-test
-  (:use clojure.test plumbing.core plumbing.test api.v2.support.coercion)
+(ns fnhouse.middleware-test
+  (:use clojure.test plumbing.core fnhouse.middleware)
   (:require
    [schema.core :as s]
-   [plumbing.graph :as graph]
-   [resource.interests :as interests]
-   [resource.topics.core :as topics]
-   [api.v2.resources.interests :as resources-interests]
-   [api.v2.support.middleware-test :as middleware-test]
-   [api.v2.support.coercion.input :as input]
-   [api.v2.support.coercion.output :as output]))
+   [plumbing.graph :as graph]))
 
-(def resources middleware-test/resources)
+(def resources
+  nil)
 
 (s/defschema LowInput
   (s/pred integer? 'integer?))
