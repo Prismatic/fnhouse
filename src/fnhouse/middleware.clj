@@ -24,6 +24,7 @@
   "Take a context key and walker, and produce a function that walks a datum and returns a
    successful walk or throws an error for a walk that fails validation."
   [context walker]
+  (when-not walker (println context))
   (fn [request data]
     (let [res (binding [*request* request] (walker data))]
       (if-let [error (utils/error-val res)]
@@ -47,9 +48,10 @@
           string-matcher (coerce/first-matcher [coercion-matcher coerce/string-coercion-matcher])
           json-matcher (coerce/first-matcher [coercion-matcher coerce/json-coercion-matcher])
           walker (for-map [[request-key coercer]
-                           (merge (map-vals #(coerce/coercer % string-matcher)
-                                            (select-keys request [:uri-args :query-params]))
-                                  {:body (when body (coerce/coercer body json-matcher))})]
+                           (assoc-when
+                            (map-vals #(coerce/coercer % string-matcher)
+                                      (select-keys request [:uri-args :query-params]))
+                            :body (when body (coerce/coercer body json-matcher)))]
                    request-key
                    (error-wrap request-key coercer))]
       (fn [request]
