@@ -24,7 +24,6 @@
   "Take a context key and walker, and produce a function that walks a datum and returns a
    successful walk or throws an error for a walk that fails validation."
   [context walker]
-  (when-not walker (println context))
   (fn [request data]
     (let [res (binding [*request* request] (walker data))]
       (if-let [error (utils/error-val res)]
@@ -43,24 +42,21 @@
    query-params, and body).  Coercion is extensible by defining an
    implementation of 'coercer' above for your function."
   [input-coercer handler-info]
-  (letk [[[:request body :as request]] handler-info]
-    (let [coercion-matcher (bind-request input-coercer)
-          string-matcher (coerce/first-matcher [coercion-matcher coerce/string-coercion-matcher])
-          json-matcher (coerce/first-matcher [coercion-matcher coerce/json-coercion-matcher])
-          walker (for-map [[request-key coercer]
-                           (assoc-when
-                            (map-vals #(coerce/coercer % string-matcher)
-                                      (select-keys request [:uri-args :query-params]))
-                            :body (when body (coerce/coercer body json-matcher)))]
-                   request-key
-                   (error-wrap request-key coercer))]
-      (fn [request]
-        (reduce-kv
-         (fn [request request-key walker]
-           (update-in request [request-key] (partial walker request)))
-         request
-         walker)))))
-
+  (let [request (safe-get handler-info :request)
+        coercion-matcher (bind-request input-coercer)
+        string-matcher (coerce/first-matcher [coercion-matcher coerce/string-coercion-matcher])
+        json-matcher (coerce/first-matcher [coercion-matcher coerce/json-coercion-matcher])
+        walker (for-map [[request-key schema] request :when schema]
+                 request-key
+                 (->> (case request-key
+                        :body json-matcher
+                        (:uri-args :query-params) string-matcher)
+                      (coerce/coercer schema)
+                      (error-wrap request-key)))]
+    (fn [request]
+      (merge-with
+       (fn [walker field] (walker request field))
+       walker request))))
 
 
 ;;; TODO: don't hardcode json coercion
@@ -73,19 +69,22 @@
   [output-coercer handler-info]
   (letk [[responses] handler-info]
     (let [coercion-matcher (bind-request output-coercer)
-          response-walkers (map-vals
-                            (fn [resp-schema]
-                              (assert (contains? resp-schema :body)
-                                      (format "Response %s for %s missing body"
-                                              resp-schema handler-info))
-                              (error-wrap
-                               :response
-                               (coerce/coercer (:body resp-schema) coercion-matcher)))
-                            responses)]
+          response-walkers
+          (map-vals
+           (fn [resp-schema]
+             (assert (contains? resp-schema :body)
+                     (format "Response %s for %s missing body"
+                             resp-schema handler-info))
+             (->> coercion-matcher
+                  (coerce/coercer (:body resp-schema))
+                  (error-wrap :response)))
+           responses)]
       (fn [request response]
-        (update-in response [:body]
-                   (partial (safe-get response-walkers (response :status 200))
-                            request))))))
+        (update-in
+         response [:body]
+         (-> response-walkers
+             (safe-get (response :status 200))
+             (partial request)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
@@ -95,13 +94,14 @@
    inputs in a generous way (i.e., 1.0 in body will be cast to 1 and validate against a long
    schema), and outputs will be clientized to match the output schemas."
   [input-coercer output-coercer]
-  (fnk [handler info :as annotated-handler]
+  (fnk [info :as annotated-handler]
     (let [request-walker (request-walker input-coercer info)
           response-walker (response-walker output-coercer info)]
-      {:info info
-       :handler
-       (fn [request]
-         (let [walked-request (request-walker request)]
-           (->> walked-request
-                handler
-                (response-walker walked-request))))})))
+      (update-in
+       annotated-handler [:handler]
+       (fn [handler]
+         (fn [request]
+           (let [walked-request (request-walker request)]
+             (->> walked-request
+                  handler
+                  (response-walker walked-request)))))))))
