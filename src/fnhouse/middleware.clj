@@ -80,17 +80,12 @@
                                               resp-schema handler-info))
                               (error-wrap
                                :response
-                               (coerce/coercer resp-schema coercion-matcher)))
+                               (coerce/coercer (:body resp-schema) coercion-matcher)))
                             responses)]
       (fn [request response]
         (update-in response [:body]
                    (partial (safe-get response-walkers (response :status 200))
-                            request)))))
-
-
-  #_  (coerce/coercer (safe-get handler-info :responses) (bind-request output-coercer))
-
-  )
+                            request))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
@@ -106,9 +101,7 @@
       {:info info
        :handler
        (fn [request]
-
-         (let [walked-request (request-walker request)
-               handled-request (handler walked-request)
-               walked-response (response-walker walked-request handled-request)]
-           (println "walked-response " walked-response)
-           walked-response))})))
+         (let [walked-request (request-walker request)]
+           (->> walked-request
+                handler
+                (response-walker walked-request))))})))
