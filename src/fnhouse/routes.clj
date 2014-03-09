@@ -2,6 +2,7 @@
   (:use plumbing.core)
   (:require
    [schema.core :as s]
+   [plumbing.map :as map]
    [fnhouse.handlers :as handlers]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -17,24 +18,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
-
-(defn safe-unflatten
-  "Transform a seq of [keyseq leaf-val] pairs into a nested map.
-   If one keyseq is a prefix of another, you're on your own."
-  [s]
-  (reduce
-   (fn [m [ks v]]
-     (if (seq ks)
-       (update-in
-        m ks
-        (fn [old-value]
-          (assert
-           (nil? old-value)
-           (str "duplicate keyseq " ks))
-          v))
-       v))
-   {}
-   s))
 
 (s/defn prefix-lookup
   "Recursively looks up the specified path starting at the given node.
@@ -62,7 +45,7 @@
                 (prefix-lookup subtree (conj result x) xs)))
             [x +single-wildcard+]))
           (when-let [rec (get node +multiple-wildcard+)]
-            (let [[match remainder] (split-with (comp not keyword?) path)]
+            (let [[match remainder] (split-with (complement keyword?) path)]
               (prefix-lookup rec (conj result match) remainder))))))))
 
 (s/defn uri-arg [s :- String]
@@ -102,7 +85,8 @@
 (defn build-prefix-map [handlers]
   (->> handlers
        (map (comp (juxt :match-path identity) compile-handler))
-       safe-unflatten))
+       ;; todo: assert-distinct
+       map/unflatten))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public
