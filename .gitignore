@@ -1,0 +1,12 @@
+target/**
+.lein**
+.repl/
+out/
+*~
+pom.xml
+*.asc
+target
+lib
+classes
+checkouts
+.DS_Store
