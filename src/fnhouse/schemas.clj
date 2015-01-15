@@ -61,7 +61,8 @@
 
    :request {:uri-args {s/Keyword Schema}
              :query-params fnk-schema/InputSchema
-             :body (s/maybe Schema)}
+             :body (s/maybe Schema)
+             :params (s/maybe Schema)}
    :responses {(s/named s/Int "status code")
                (s/named Schema "response body schema")}
 

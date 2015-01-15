@@ -142,7 +142,7 @@
   (letk [[method path] (path-and-method var)
          [{doc ""} {responses {}}] (meta var)
          [{resources {}} {request {}}] (pfnk/input-schema @var)
-         [{uri-args s/Any} {query-params s/Any} {body nil}] request]
+         [{uri-args s/Any} {query-params s/Any} {body nil} {params nil}] request]
     (let [source-map (source-map var)
           explicit-uri-args (dissoc (default-map-schema uri-args) s/Keyword)
           raw-declared-args (routes/uri-arg-ks path)
@@ -153,6 +153,7 @@
                 :description doc
                 :request {:query-params (default-map-schema query-params)
                           :body body
+                          :params params
                           :uri-args (merge
                                      (map-from-keys (constantly String) declared-args)
                                      explicit-uri-args)}
