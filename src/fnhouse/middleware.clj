@@ -34,6 +34,7 @@
   {:uri-args [coerce/string-coercion-matcher]
    :query-params [coerce/string-coercion-matcher]
    :body [coerce/json-coercion-matcher]
+   :custom [coerce/string-coercion-matcher]
    :response []})
 
 (s/defn coercing-walker
@@ -54,7 +55,7 @@
           (if-let [error (utils/error-val res)]
             (throw (ex-info
                     (format "Request: [%s]<BR>==> Error: [%s]<BR>==> Context: [%s]"
-                            (pr-str (select-keys request [:uri :query-string :body]))
+                            (pr-str (select-keys request [:uri :query-string :body :custom]))
                             (pr-str error)
                             context)
                     {:type :coercion-error
@@ -68,7 +69,7 @@
   "Given a custom input coercer, compile a function for coercing and
    validating requests (uri-args, query-params, and body)."
   [input-coercer handler-info]
-  (let [request-walkers (for-map [k [:uri-args :query-params :body]
+  (let [request-walkers (for-map [k [:uri-args :query-params :body :custom]
                                   :let [schema (safe-get-in handler-info [:request k])]
                                   :when schema]
                           k
