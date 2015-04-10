@@ -1,4 +1,4 @@
-(defproject prismatic/fnhouse "0.1.2-SNAPSHOT"
+(defproject tiensonqin/fnhouse-hacks "0.1.2-SNAPSHOT"
   :description "Transform lightly-annotated functions into a full-fledged web service"
   :license {:name "Eclipse Public License - v 1.0"
             :url "http://www.eclipse.org/legal/epl-v10.html"
