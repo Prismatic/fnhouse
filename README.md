@@ -8,6 +8,7 @@ Leiningen dependency (Clojars):
 subject to change. Comments and contributions are much appreciated.**
 
 [![Build Status](https://travis-ci.org/Prismatic/fnhouse.svg?branch=master)](https://travis-ci.org/Prismatic/fnhouse)
+[![Dependencies Status](https://jarkeeper.com/Prismatic/fnhouse/status.svg)](https://jarkeeper.com/Prismatic/fnhouse)
 
 fnhouse
 =======
