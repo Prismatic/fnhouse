@@ -80,7 +80,7 @@
 
 (defrecord LinkedSchema [schema-name]
   s/Schema
-  (walker [this] this)
+  (spec [this] this)
   (explain [this] [[[schema-name]]]))
 
 (declare extract-schemas)

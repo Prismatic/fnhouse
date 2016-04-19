@@ -2,7 +2,7 @@
 
 Contributions to fnhouse are very welcome.  
 
-Please file bug reports on [GitHub](https://github.com/prismatic/fnhouse/issues).
+Please file bug reports on [GitHub](https://github.com/plumatic/fnhouse/issues).
 
 For questions, feature requests, or discussion, please post on the Plumbing [mailing list](https://groups.google.com/forum/#!forum/prismatic-plumbing) for now.
 

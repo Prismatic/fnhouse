@@ -1,6 +1,8 @@
-![fnhouse!](https://raw.github.com/wiki/prismatic/fnhouse/images/fnhouse.jpg)
+![fnhouse!](https://raw.github.com/wiki/plumatic/fnhouse/images/fnhouse.jpg)
 
-Leiningen dependency (Clojars): `[prismatic/fnhouse "0.1.1"]`
+Leiningen dependency (Clojars): 
+
+[![Clojars Project](http://clojars.org/prismatic/fnhouse/latest-version.svg)](http://clojars.org/prismatic/fnhouse)
 
 **This is an alpha release. The API and organizational structure are
 subject to change. Comments and contributions are much appreciated.**
@@ -29,8 +31,8 @@ Here is an example fnhouse handler:
 ```
 
 This handler is implemented in terms of a keyword function (`defnk`) introduced in
-  the [Plumbing](https://github.com/Prismatic/plumbing) library.
-  Using [Schema](https://github.com/Prismatic/schema), fnhouse
+  the [Plumbing](https://github.com/plumatic/plumbing) library.
+  Using [Schema](https://github.com/plumatic/schema), fnhouse
   handlers can specify the type of their input arguments: in the example above, `body` is declared to be of type `EntryData`.
 The handler explicitly declares the resources on which it depends: `guestbook`.
 The Schema annotations on the arguments to the handler allow for
@@ -117,8 +119,6 @@ To see `start-api` in action, check out the corresponding
 
 Please feel free to join the Plumbing [mailing list](https://groups.google.com/forum/#!forum/prismatic-plumbing) to ask questions or discuss how you're using Schema.
 
-For announcements of new releases, you can also follow on [@PrismaticEng](http://twitter.com/prismaticeng) on Twitter.
-
 We welcome contributions in the form of bug reports and pull requests; please see `CONTRIBUTING.md` in the repo root for guidelines.
 
 # Supported Clojure versions
@@ -127,4 +127,4 @@ Fnhouse is currently supported on Clojure 1.5.1 and 1.6.x.
 
 # License
 
-Copyright (C) 2013 Prismatic and Contributors.  Distributed under the Eclipse Public License, the same as Clojure.
+Distributed under the Eclipse Public License, the same as Clojure.

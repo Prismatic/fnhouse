@@ -61,8 +61,9 @@
                     {:type :coercion-error
                      :schema schema
                      :data data
-                     :context context
-                     :error error}))
+                     :error error
+                     :context context}))
+
             res))))))
 
 (defn request-walker

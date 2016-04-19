@@ -43,6 +43,13 @@
     (is (thrown? Exception (handlers/var->handler-info #'$:a$:a$GET)))
     (ns-unmap 'fnhouse.handlers-test '$:a$:a$GET)))
 
+(deftest test-query-params-schema
+  (defnk $q$GET {} [[:request query-params :- (s/either s/Int String)]])
+  (let [handler (handlers/var->handler-info #'$q$GET (constantly {}))]
+    (is (= (-> handler :request :query-params)
+           (s/either s/Int String))))
+  (ns-unmap 'fnhouse.handlers-test '$q$GET))
+
 (deftest nss->handlers-fn-test
   (let [annotation-fn (fn-> meta (select-keys [:auth-level :private]))
         handlers-fn (handlers/nss->handlers-fn {"my-test" 'fnhouse.handlers-test} annotation-fn)

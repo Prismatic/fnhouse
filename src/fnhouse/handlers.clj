@@ -72,9 +72,9 @@
    For a complete example, see the included 'examples/guesthouse' project.
 
    [1] https://github.com/ring-clojure
-   [2] https://github.com/prismatic/schema
-   [3] https://github.com/prismatic/plumbing
-   [4] https://github.com/prismatic/coax"
+   [2] https://github.com/plumatic/schema
+   [3] https://github.com/plumatic/plumbing
+   [4] https://github.com/plumatic/coax"
   (:use plumbing.core)
   (:require
    [clojure.string :as str]
